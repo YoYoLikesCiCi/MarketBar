@@ -70,6 +70,9 @@ final class MarketStore {
     var allIDs: [String] { [Instrument.goldID] + preferences.stockIDs }
     var refreshing: Bool { refreshTask != nil }
     var positions: [String: Position] { positionBook.positions }
+    var portfolioGains: [PortfolioGain] {
+        PortfolioGain.summarize(book: positionBook, quotes: quotes, staleIDs: Set(errors.keys))
+    }
 
     private var rotationIDs: [String] {
         let selected = allIDs.filter { !preferences.excludedFromRotation.contains($0) }

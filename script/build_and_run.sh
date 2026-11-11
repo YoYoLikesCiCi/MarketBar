@@ -22,7 +22,22 @@ export SWIFTPM_MODULECACHE_OVERRIDE="$ROOT_DIR/.build/ModuleCache"
 BUILD_BINARY="$(/usr/bin/swift build --disable-sandbox --show-bin-path)/$APP_NAME"
 
 /usr/bin/pkill -x "$APP_NAME" >/dev/null 2>&1 || true
-mkdir -p "$CONTENTS/MacOS"
+mkdir -p "$CONTENTS/MacOS" "$CONTENTS/Resources"
+ICON_TEMP="$(mktemp -d "$ROOT_DIR/.build/appicon.XXXXXX")"
+trap 'rm -rf "$ICON_TEMP"' EXIT
+ICONSET="$ICON_TEMP/AppIcon.iconset"
+mkdir "$ICONSET"
+for size in 16 32 128 256 512; do
+  for scale in 1 2; do
+    pixels=$((size * scale))
+    suffix=""
+    if [[ "$scale" == 2 ]]; then suffix="@2x"; fi
+    /usr/bin/sips -z "$pixels" "$pixels" "$ROOT_DIR/Resources/AppIcon.png" \
+      --out "$ICONSET/icon_${size}x${size}${suffix}.png" >/dev/null
+  done
+done
+/usr/bin/swift -module-cache-path "$ROOT_DIR/.build/ModuleCache" "$ROOT_DIR/script/make_icon.swift" \
+  "$ICONSET" "$CONTENTS/Resources/AppIcon.icns"
 cp "$BUILD_BINARY" "$BINARY"
 cat > "$CONTENTS/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
@@ -34,8 +49,9 @@ cat > "$CONTENTS/Info.plist" <<PLIST
   <key>CFBundleName</key><string>行情栏</string>
   <key>CFBundleDisplayName</key><string>行情栏</string>
   <key>CFBundlePackageType</key><string>APPL</string>
-  <key>CFBundleShortVersionString</key><string>1.4.0</string>
-  <key>CFBundleVersion</key><string>5</string>
+  <key>CFBundleIconFile</key><string>AppIcon.icns</string>
+  <key>CFBundleShortVersionString</key><string>1.5.0</string>
+  <key>CFBundleVersion</key><string>6</string>
   <key>LSMinimumSystemVersion</key><string>14.0</string>
   <key>LSUIElement</key><true/>
   <key>NSPrincipalClass</key><string>NSApplication</string>

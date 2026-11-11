@@ -26,6 +26,8 @@ struct QuotesPanel: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 13) {
             header
+            let gains = store.portfolioGains
+            if !gains.isEmpty { PortfolioGainsView(gains: gains) }
             if let selectedID {
                 QuoteSpotlight(
                     id: selectedID, store: store,
