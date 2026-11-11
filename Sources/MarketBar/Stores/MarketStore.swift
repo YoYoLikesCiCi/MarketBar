@@ -5,12 +5,13 @@ import UserNotifications
 @MainActor
 @Observable
 final class MarketStore {
-    enum SettingsTab: Hashable { case display, updates, watchlist, positions }
+    enum SettingsTab: Hashable { case display, updates, alerts, watchlist, positions }
 
     static let stockLimit = 24
     private let defaults: UserDefaults
     private let client = QuoteClient()
     private let notificationCenter = UNUserNotificationCenter.current()
+    let priceAlerts: PriceAlertStore
     private var refreshTimer: Timer?
     private var rotationTimer: Timer?
     private var notificationTimer: Timer?
@@ -27,6 +28,7 @@ final class MarketStore {
     var settingsTab = SettingsTab.display
     var positionID = Instrument.goldID
     var tradeRequest: PositionTradeRequest?
+    var alertInstrumentID: String?
 
     var preferences: Preferences {
         didSet {
@@ -49,6 +51,7 @@ final class MarketStore {
 
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
+        priceAlerts = PriceAlertStore(defaults: defaults)
         var saved = defaults.data(forKey: "preferences").flatMap {
             try? JSONDecoder().decode(Preferences.self, from: $0)
         } ?? Preferences()
@@ -151,16 +154,18 @@ final class MarketStore {
             }
             async let gold = Self.attempt { try await client.gold() }
             async let stocks = Self.attempt { try await client.stocks(instruments) }
+            var fresh: [String: Quote] = [:]
 
             switch await gold {
-            case .success(let quote): record(quote, for: Instrument.goldID)
+            case .success(let quote):
+                if record(quote, for: Instrument.goldID) { fresh[Instrument.goldID] = quote }
             case .failure(let error): errors[Instrument.goldID] = error.localizedDescription
             }
             switch await stocks {
             case .success(let batch):
                 for instrument in instruments where preferences.stockIDs.contains(instrument.id) {
                     if let quote = batch[instrument.id] {
-                        record(quote, for: instrument.id)
+                        if record(quote, for: instrument.id) { fresh[instrument.id] = quote }
                     } else {
                         errors[instrument.id] = QuoteError.missingStock.localizedDescription
                     }
@@ -170,6 +175,7 @@ final class MarketStore {
                     errors[instrument.id] = error.localizedDescription
                 }
             }
+            await priceAlerts.evaluate(fresh) { allIDs.contains($0) }
         }
         refreshTask = task
         await task.value
@@ -270,15 +276,17 @@ final class MarketStore {
 
     private static let permissionMessage = "请在「系统设置 → 通知 → 行情栏」允许通知，再开启此选项。"
 
-    private func record(_ quote: Quote, for id: String) {
+    @discardableResult
+    private func record(_ quote: Quote, for id: String) -> Bool {
         if let existing = quotes[id],
            let previousTime = existing.quotedAt, let currentTime = quote.quotedAt,
            currentTime < previousTime {
             errors[id] = "接口返回了更早的行情，已保留较新的报价。"
-            return
+            return false
         }
         quotes[id] = quote
         errors.removeValue(forKey: id)
+        return true
     }
 
     private func saveQuotes() {

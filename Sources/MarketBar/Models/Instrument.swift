@@ -70,6 +70,7 @@ struct Quote: Codable, Sendable {
     let quotedAt: Date?
     let fetchedAt: Date
     let currency: String
+    var previousClose: Decimal? = nil
 
     func formattedPrice(gold: Bool) -> String {
         let decimals = gold ? 2 : (price < 1 ? 4 : 3)

@@ -65,7 +65,8 @@ struct QuoteClient: Sendable {
             return Date(timeIntervalSince1970: value > 10_000_000_000 ? value / 1000 : value)
         }
         return Quote(name: "浙商积存金", price: price, changePercent: number(fields["upAndDownRate"]),
-                     quotedAt: time, fetchedAt: received, currency: "CNY")
+                     quotedAt: time, fetchedAt: received, currency: "CNY",
+                     previousClose: positiveDecimal(fields["yesterdayPrice"]))
     }
 
     static func parseStocks(_ data: Data, instruments: [Instrument], received: Date = .now) throws -> [String: Quote] {
@@ -106,10 +107,20 @@ struct QuoteClient: Sendable {
             }
             quotes[instrument.id] = Quote(
                 name: name, price: price, changePercent: number(String(fields[32])),
-                quotedAt: formatter.date(from: timestamp), fetchedAt: received, currency: instrument.currency
+                quotedAt: formatter.date(from: timestamp), fetchedAt: received, currency: instrument.currency,
+                previousClose: positiveDecimal(String(fields[4]))
             )
         }
         return quotes
+    }
+
+    private static func positiveDecimal(_ value: Any?) -> Decimal? {
+        let text = (value as? String) ?? (value as? NSNumber)?.stringValue
+        guard let text,
+              let number = Decimal(string: text.trimmingCharacters(in: .whitespacesAndNewlines),
+                                   locale: Locale(identifier: "en_US_POSIX")),
+              number > 0 else { return nil }
+        return number
     }
 
     private static func number(_ value: Any?) -> Double? {

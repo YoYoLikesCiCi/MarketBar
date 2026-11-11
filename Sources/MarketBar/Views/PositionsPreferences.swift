@@ -5,10 +5,9 @@ struct PositionsPreferences: View {
 
     var body: some View {
         SettingsCard(title: "持仓品种") {
-            Picker("品种", selection: $store.positionID) {
-                ForEach(store.allIDs, id: \.self) { id in
-                    Text(store.name(for: id)).tag(id)
-                }
+            SettingsOptionRow(title: "品种") {
+                SettingsSelect(title: "品种", values: store.allIDs, selection: $store.positionID,
+                               label: store.name(for:))
             }
         }
         PositionEditor(store: store, id: store.positionID)
@@ -111,19 +110,10 @@ private struct PositionEditor: View {
     }
 
     private func field(_ label: String, text: Binding<String>, suffix: String) -> some View {
-        HStack(spacing: 8) {
-            Text(label).accessibilityHidden(true)
-            Spacer()
-            TextField(label, text: text, prompt: Text("选填"))
-                .labelsHidden()
-                .textFieldStyle(.roundedBorder)
-                .multilineTextAlignment(.trailing)
-                .frame(width: 135)
-                .accessibilityLabel(label)
+        SettingsOptionRow(title: label) {
+            SettingsTextField(title: label, text: text, prompt: "选填", unit: suffix, numeric: true)
+                .frame(width: 175)
                 .onSubmit { if isEdited { save() } }
-            Text(suffix)
-                .foregroundStyle(.secondary)
-                .frame(width: 80, alignment: .leading)
         }
     }
 

@@ -72,6 +72,10 @@ struct QuotesPanel: View {
 
             Menu {
                 if let selectedID {
+                    Button("价格提醒…") {
+                        store.alertInstrumentID = selectedID
+                        openSettings(.alerts)
+                    }
                     Button("固定到菜单栏") { store.pin(selectedID) }
                     Divider()
                 }

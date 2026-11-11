@@ -52,12 +52,12 @@ struct SettingsCard<Content: View>: View {
     @ViewBuilder let content: Content
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 13) {
-            Text(title).font(.system(size: 13, weight: .semibold))
+        VStack(alignment: .leading, spacing: 12) {
+            Text(title).font(.system(size: 15, weight: .semibold))
                 .accessibilityAddTraits(.isHeader)
             content
         }
-        .padding(15)
+        .padding(17)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(.primary.opacity(0.035), in: RoundedRectangle(cornerRadius: 14))
         .overlay {
