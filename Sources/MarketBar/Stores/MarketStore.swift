@@ -20,7 +20,7 @@ final class MarketStore {
 
     private(set) var quotes: [String: Quote] = [:]
     private(set) var errors: [String: String] = [:]
-    private(set) var positions: [String: Position] = [:]
+    private var positionBook = PositionBook()
     private(set) var checkingNotifications = false
     private(set) var notificationMessage: String?
     private(set) var addingStock = false
@@ -53,10 +53,8 @@ final class MarketStore {
         } ?? Preferences()
         saved.normalize()
         preferences = saved
-        if let data = defaults.data(forKey: "positions"),
-           let savedPositions = try? JSONDecoder().decode([String: Position].self, from: data) {
-            positions = savedPositions
-        }
+        positionBook = PositionBook.load(book: defaults.data(forKey: "positionBook"),
+                                         legacyPositions: defaults.data(forKey: "positions"))
         if let data = defaults.data(forKey: "quotes"),
            let cache = try? JSONDecoder().decode([String: Quote].self, from: data) {
             let ids = Set(saved.stockIDs + [Instrument.goldID])
@@ -67,6 +65,7 @@ final class MarketStore {
 
     var allIDs: [String] { [Instrument.goldID] + preferences.stockIDs }
     var refreshing: Bool { refreshTask != nil }
+    var positions: [String: Position] { positionBook.positions }
 
     private var rotationIDs: [String] {
         let selected = allIDs.filter { !preferences.excludedFromRotation.contains($0) }
@@ -98,10 +97,35 @@ final class MarketStore {
         return quotes[id]?.name ?? Instrument(id)?.code ?? id
     }
 
-    func savePosition(_ position: Position, for id: String) {
-        guard allIDs.contains(id) else { return }
-        positions[id] = position.isEmpty ? nil : position
-        defaults.set(try? JSONEncoder().encode(positions), forKey: "positions")
+    func savePosition(_ position: Position, for id: String) throws {
+        guard allIDs.contains(id) else { throw PositionTrade.TradeError.notTracked }
+        var updated = positionBook
+        updated.positions[id] = position.isEmpty ? nil : position
+        try savePositionBook(updated)
+    }
+
+    func trades(for id: String) -> [PositionTrade] { positionBook.trades[id] ?? [] }
+
+    func recordTrade(_ trade: PositionTrade, for id: String) throws {
+        guard allIDs.contains(id) else { throw PositionTrade.TradeError.notTracked }
+        var updated = positionBook
+        try updated.record(trade, for: id)
+        try savePositionBook(updated)
+    }
+
+    func canUndoTrade(for id: String) -> Bool { positionBook.canUndo(for: id) }
+
+    func undoTrade(for id: String) throws {
+        guard allIDs.contains(id) else { throw PositionTrade.TradeError.notTracked }
+        var updated = positionBook
+        try updated.undoLastTrade(for: id)
+        try savePositionBook(updated)
+    }
+
+    private func savePositionBook(_ updated: PositionBook) throws {
+        let encoded = try JSONEncoder().encode(updated)
+        defaults.set(encoded, forKey: "positionBook")
+        positionBook = updated
     }
 
     func start() {

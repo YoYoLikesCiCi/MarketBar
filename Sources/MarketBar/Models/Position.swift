@@ -2,7 +2,12 @@ import Foundation
 
 struct Position: Codable, Equatable {
     let quantity: Decimal?
-    let unitCost: Decimal?
+    private let enteredUnitCost: Decimal?
+    private let recordedCostBasis: Decimal?
+
+    private enum CodingKeys: String, CodingKey {
+        case quantity, enteredUnitCost = "unitCost", recordedCostBasis
+    }
 
     struct Valuation {
         let marketValue: Decimal
@@ -11,11 +16,16 @@ struct Position: Codable, Equatable {
     }
 
     enum InputError: LocalizedError {
-        case quantity, unitCost
+        case quantity, unitCost, tradeQuantity, tradePrice, tradeFee
 
         var errorDescription: String? {
-            let field = self == .quantity ? "持仓份额" : "成本价"
-            return "\(field)请输入非负数字，最多 8 位小数。"
+            switch self {
+            case .quantity: "持仓份额请输入非负数字，最多 8 位小数。"
+            case .unitCost: "成本价请输入非负数字，最多 8 位小数。"
+            case .tradeQuantity: "成交份额须大于 0，最多 8 位小数。"
+            case .tradePrice: "成交单价须大于 0，最多 8 位小数。"
+            case .tradeFee: "手续费请输入非负数字，最多 8 位小数。"
+            }
         }
     }
 
@@ -24,7 +34,25 @@ struct Position: Codable, Equatable {
     init(quantityText: String, unitCostText: String) throws {
         let quantity = try Self.parse(quantityText, error: .quantity)
         self.quantity = quantity == 0 ? nil : quantity
-        self.unitCost = try Self.parse(unitCostText, error: .unitCost)
+        enteredUnitCost = try Self.parse(unitCostText, error: .unitCost)
+        recordedCostBasis = nil
+    }
+
+    init(quantity: Decimal, costBasis: Decimal?) {
+        self.quantity = quantity
+        enteredUnitCost = nil
+        recordedCostBasis = costBasis
+    }
+
+    var unitCost: Decimal? {
+        if let recordedCostBasis, let quantity, quantity > 0 { return recordedCostBasis / quantity }
+        return enteredUnitCost
+    }
+
+    var costBasis: Decimal? {
+        if let recordedCostBasis { return recordedCostBasis }
+        guard let quantity, let enteredUnitCost else { return nil }
+        return quantity * enteredUnitCost
     }
 
     var isEmpty: Bool { quantity == nil && unitCost == nil }
@@ -38,16 +66,15 @@ struct Position: Codable, Equatable {
             return nil
         }
         let marketValue = quantity * quote
-        guard let unitCost else {
+        guard let cost = costBasis else {
             return Valuation(marketValue: marketValue, gain: nil, gainPercent: nil)
         }
-        let cost = quantity * unitCost
         let gain = marketValue - cost
         let percent = cost > 0 ? gain / cost * 100 : nil
         return Valuation(marketValue: marketValue, gain: gain, gainPercent: percent)
     }
 
-    private static func parse(_ input: String, error: InputError) throws -> Decimal? {
+    static func parse(_ input: String, error: InputError) throws -> Decimal? {
         let text = input.trimmingCharacters(in: .whitespacesAndNewlines)
             .folding(options: .widthInsensitive, locale: inputLocale)
         guard !text.isEmpty else { return nil }
