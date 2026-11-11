@@ -5,7 +5,7 @@ import UserNotifications
 @MainActor
 @Observable
 final class MarketStore {
-    enum SettingsTab: Hashable { case display, updates, watchlist }
+    enum SettingsTab: Hashable { case display, updates, watchlist, positions }
 
     static let stockLimit = 24
     private let defaults: UserDefaults
@@ -20,10 +20,12 @@ final class MarketStore {
 
     private(set) var quotes: [String: Quote] = [:]
     private(set) var errors: [String: String] = [:]
+    private(set) var positions: [String: Position] = [:]
     private(set) var checkingNotifications = false
     private(set) var notificationMessage: String?
     private(set) var addingStock = false
     var settingsTab = SettingsTab.display
+    var positionID = Instrument.goldID
 
     var preferences: Preferences {
         didSet {
@@ -51,6 +53,10 @@ final class MarketStore {
         } ?? Preferences()
         saved.normalize()
         preferences = saved
+        if let data = defaults.data(forKey: "positions"),
+           let savedPositions = try? JSONDecoder().decode([String: Position].self, from: data) {
+            positions = savedPositions
+        }
         if let data = defaults.data(forKey: "quotes"),
            let cache = try? JSONDecoder().decode([String: Quote].self, from: data) {
             let ids = Set(saved.stockIDs + [Instrument.goldID])
@@ -90,6 +96,12 @@ final class MarketStore {
     func name(for id: String) -> String {
         if id == Instrument.goldID { return "浙商积存金" }
         return quotes[id]?.name ?? Instrument(id)?.code ?? id
+    }
+
+    func savePosition(_ position: Position, for id: String) {
+        guard allIDs.contains(id) else { return }
+        positions[id] = position.isEmpty ? nil : position
+        defaults.set(try? JSONEncoder().encode(positions), forKey: "positions")
     }
 
     func start() {
@@ -165,6 +177,7 @@ final class MarketStore {
         edited.stockIDs.removeAll { $0 == id }
         edited.normalize()
         preferences = edited
+        if positionID == id { positionID = Instrument.goldID }
         quotes.removeValue(forKey: id)
         errors.removeValue(forKey: id)
         saveQuotes()

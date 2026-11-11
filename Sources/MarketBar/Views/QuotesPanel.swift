@@ -34,10 +34,10 @@ struct QuotesPanel: View {
             .padding(12)
 
             Divider()
-            if store.allIDs.count <= 5 {
+            if rowUnits <= 4 {
                 rows
             } else {
-                ScrollView { rows }.frame(height: 340)
+                ScrollView { rows }.frame(height: 360)
             }
             Divider()
 
@@ -58,10 +58,17 @@ struct QuotesPanel: View {
         .frame(width: 375)
     }
 
+    private var rowUnits: Int {
+        store.allIDs.count + store.allIDs.filter { store.positions[$0] != nil }.count
+    }
+
     private var rows: some View {
         VStack(spacing: 0) {
             ForEach(store.allIDs, id: \.self) { id in
-                QuoteRow(id: id, store: store)
+                QuoteRow(id: id, store: store) {
+                    store.positionID = id
+                    openSettings(.positions)
+                }
                 if id != store.allIDs.last { Divider().padding(.horizontal, 12) }
             }
         }
@@ -77,6 +84,7 @@ struct QuotesPanel: View {
 private struct QuoteRow: View {
     let id: String
     let store: MarketStore
+    let editPosition: () -> Void
 
     private var isGold: Bool { id == Instrument.goldID }
 
@@ -95,6 +103,12 @@ private struct QuoteRow: View {
                 Spacer(minLength: 8)
                 Text(quote?.formattedPrice(gold: isGold) ?? "—")
                     .font(.system(.body, design: .monospaced).weight(.semibold))
+                Button(action: editPosition) {
+                    Image(systemName: "square.and.pencil")
+                }
+                .buttonStyle(.borderless)
+                .help("编辑持仓")
+                .accessibilityLabel("编辑\(store.name(for: id))持仓")
             }
 
             HStack(alignment: .firstTextBaseline) {
@@ -119,6 +133,11 @@ private struct QuoteRow: View {
                     .font(.caption)
                     .foregroundStyle(.orange)
                     .lineLimit(2)
+            }
+
+            if let position = store.positions[id] {
+                Divider().padding(.top, 3)
+                PositionMetrics(position: position, quote: quote, id: id)
             }
         }
         .padding(.horizontal, 12)

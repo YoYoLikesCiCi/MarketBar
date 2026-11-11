@@ -14,6 +14,9 @@ struct PreferencesView: View {
             WatchlistPreferences(store: store)
                 .tabItem { Label("自选股", systemImage: "list.star") }
                 .tag(MarketStore.SettingsTab.watchlist)
+            PositionsPreferences(store: store)
+                .tabItem { Label("持仓", systemImage: "briefcase") }
+                .tag(MarketStore.SettingsTab.positions)
         }
         .frame(width: 500, height: 420)
     }

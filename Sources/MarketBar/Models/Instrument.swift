@@ -75,8 +75,11 @@ struct Quote: Codable, Sendable {
         let decimals = gold ? 2 : (price < 1 ? 4 : 3)
         let amount = price.formatted(.number.precision(.fractionLength(2...decimals)).grouping(.never))
         if gold { return "¥\(amount)/克" }
-        let symbol = ["CNY": "¥", "HKD": "HK$", "USD": "US$"][currency] ?? "\(currency) "
-        return symbol + amount
+        return Self.currencySymbol(for: currency) + amount
+    }
+
+    static func currencySymbol(for currency: String) -> String {
+        ["CNY": "¥", "HKD": "HK$", "USD": "US$"][currency] ?? "\(currency) "
     }
 
     var formattedChange: String? {
