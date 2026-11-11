@@ -2,40 +2,32 @@ import SwiftUI
 
 struct PositionsPreferences: View {
     @Bindable var store: MarketStore
-    @State private var tradeSide: PositionTrade.Side?
 
     var body: some View {
-        Form {
+        SettingsCard(title: "持仓品种") {
             Picker("品种", selection: $store.positionID) {
                 ForEach(store.allIDs, id: \.self) { id in
                     Text(store.name(for: id)).tag(id)
                 }
             }
-
-            PositionEditor(store: store, id: store.positionID, tradeSide: $tradeSide)
-                .id(store.positionID)
         }
-        .formStyle(.grouped)
-        .sheet(item: $tradeSide) { side in
-            PositionTradeSheet(store: store, id: store.positionID, side: side)
-        }
+        PositionEditor(store: store, id: store.positionID)
+            .id(store.positionID)
     }
 }
 
 private struct PositionEditor: View {
     let store: MarketStore
     let id: String
-    @Binding var tradeSide: PositionTrade.Side?
     @State private var quantity: String
     @State private var unitCost: String
     @State private var error: String?
     @State private var saved = false
     @State private var showingUndo = false
 
-    init(store: MarketStore, id: String, tradeSide: Binding<PositionTrade.Side?>) {
+    init(store: MarketStore, id: String) {
         self.store = store
         self.id = id
-        _tradeSide = tradeSide
         let position = store.positions[id]
         _quantity = State(initialValue: position?.quantityText ?? "")
         _unitCost = State(initialValue: position?.unitCostText ?? "")
@@ -50,14 +42,25 @@ private struct PositionEditor: View {
     }
 
     var body: some View {
-        Section("持仓信息") {
-            HStack {
-                Button("加仓") { tradeSide = .buy }
-                    .disabled(isEdited)
-                Button("减持") { tradeSide = .sell }
-                    .disabled(isEdited || (store.positions[id]?.quantity ?? 0) <= 0)
+        SettingsCard(title: "当前持仓") {
+            if let position = store.positions[id] {
+                PositionMetrics(position: position, quote: store.quotes[id], id: id)
+            } else {
+                Text("暂无持仓").foregroundStyle(.secondary)
             }
+            HStack {
+                Button { openTrade(.buy) } label: { Label("加仓", systemImage: "plus") }
+                    .buttonStyle(.borderedProminent)
+                Button { openTrade(.sell) } label: { Label("减持", systemImage: "minus") }
+                    .disabled((store.positions[id]?.quantity ?? 0) <= 0)
+            }
+            .disabled(isEdited)
+            if isEdited {
+                Text("保存手工调整后即可登记交易。").font(.caption).foregroundStyle(.secondary)
+            }
+        }
 
+        SettingsCard(title: "手工调整") {
             field("持仓份额", text: $quantity, suffix: unit)
             field("成本价", text: $unitCost, suffix: "\(currency)/\(unit)")
 
@@ -68,6 +71,7 @@ private struct PositionEditor: View {
 
             HStack {
                 Button("保存调整", action: save).disabled(!isEdited)
+                    .buttonStyle(.bordered)
                 if saved && !isEdited {
                     Label("已保存", systemImage: "checkmark")
                         .font(.caption)
@@ -89,9 +93,10 @@ private struct PositionEditor: View {
 
         let trades = store.trades(for: id)
         if !trades.isEmpty {
-            Section("加仓与减持记录") {
+            SettingsCard(title: "加仓与减持记录") {
                 ForEach(trades.reversed()) { trade in
                     PositionTradeRow(trade: trade, unit: unit, currency: currency)
+                    Divider()
                 }
                 Button("撤销最近一笔…") { showingUndo = true }
                     .disabled(isEdited || !store.canUndoTrade(for: id))
@@ -106,19 +111,24 @@ private struct PositionEditor: View {
     }
 
     private func field(_ label: String, text: Binding<String>, suffix: String) -> some View {
-        LabeledContent(label) {
-            HStack {
-                TextField(label, text: text, prompt: Text("选填"))
-                    .labelsHidden()
-                    .multilineTextAlignment(.trailing)
-                    .frame(width: 135)
-                    .accessibilityLabel(label)
-                    .onSubmit { if isEdited { save() } }
-                Text(suffix)
-                    .foregroundStyle(.secondary)
-                    .frame(width: 80, alignment: .leading)
-            }
+        HStack(spacing: 8) {
+            Text(label).accessibilityHidden(true)
+            Spacer()
+            TextField(label, text: text, prompt: Text("选填"))
+                .labelsHidden()
+                .textFieldStyle(.roundedBorder)
+                .multilineTextAlignment(.trailing)
+                .frame(width: 135)
+                .accessibilityLabel(label)
+                .onSubmit { if isEdited { save() } }
+            Text(suffix)
+                .foregroundStyle(.secondary)
+                .frame(width: 80, alignment: .leading)
         }
+    }
+
+    private func openTrade(_ side: PositionTrade.Side) {
+        store.tradeRequest = PositionTradeRequest(instrumentID: id, side: side)
     }
 
     private func save() {

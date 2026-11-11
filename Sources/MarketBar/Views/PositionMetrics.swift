@@ -10,7 +10,7 @@ struct PositionMetrics: View {
 
     var body: some View {
         let valuation = position.valuation(at: quote?.price)
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: 10) {
             HStack(alignment: .top, spacing: 12) {
                 metric("持仓份额", position.quantity.map {
                     "\($0.formatted(.number.precision(.fractionLength(0...8)))) \(unit)"
@@ -25,15 +25,17 @@ struct PositionMetrics: View {
                 }
             }
         }
-        .padding(.vertical, 6)
+        .padding(.vertical, 3)
     }
 
     private func metric(_ label: String, _ value: String, tint: Color = .primary) -> some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Text(label).foregroundStyle(.secondary)
+        VStack(alignment: .leading, spacing: 4) {
+            Text(label).font(.caption2).foregroundStyle(.secondary)
             Text(value)
+                .font(.system(size: 13, weight: .semibold))
                 .monospacedDigit()
                 .foregroundStyle(tint)
+                .lineLimit(2)
         }
         .font(.caption)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -56,7 +58,6 @@ struct PositionMetrics: View {
 
     private func gainColor(_ value: Decimal?) -> Color {
         guard let value, value != 0 else { return .primary }
-        let risesInGreen = Instrument(id)?.market == .us
-        return (value > 0) == risesInGreen ? .green : .red
+        return MarketAppearance.movementColor(id: id, sign: value > 0 ? 1 : -1)
     }
 }

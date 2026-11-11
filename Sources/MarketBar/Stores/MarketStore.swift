@@ -26,6 +26,7 @@ final class MarketStore {
     private(set) var addingStock = false
     var settingsTab = SettingsTab.display
     var positionID = Instrument.goldID
+    var tradeRequest: PositionTradeRequest?
 
     var preferences: Preferences {
         didSet {

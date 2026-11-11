@@ -1,5 +1,12 @@
 import Foundation
 
+struct PositionTradeRequest: Identifiable {
+    let instrumentID: String
+    let side: PositionTrade.Side
+
+    var id: String { "\(instrumentID):\(side.rawValue)" }
+}
+
 struct PositionTrade: Codable, Identifiable {
     enum Side: String, Codable, Identifiable {
         case buy, sell

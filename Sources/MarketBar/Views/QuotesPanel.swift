@@ -2,156 +2,236 @@ import AppKit
 import SwiftUI
 
 struct QuotesPanel: View {
+    private enum Filter: String, CaseIterable, Identifiable {
+        case all = "全部"
+        case held = "持仓"
+        var id: Self { self }
+    }
+
     let store: MarketStore
     @Environment(\.openWindow) private var openWindow
+    @State private var selection: String?
+    @State private var filter = Filter.all
+
+    private var visibleIDs: [String] {
+        filter == .all ? store.allIDs : store.allIDs.filter { (store.positions[$0]?.quantity ?? 0) > 0 }
+    }
+
+    private var selectedID: String? {
+        if let selection, visibleIDs.contains(selection) { return selection }
+        if visibleIDs.contains(store.displayedID) { return store.displayedID }
+        return visibleIDs.first
+    }
 
     var body: some View {
-        VStack(spacing: 0) {
-            HStack(spacing: 10) {
-                Image(systemName: "chart.line.uptrend.xyaxis")
-                    .font(.title3)
-                    .foregroundStyle(.tint)
-                    .frame(width: 30)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("行情栏").font(.headline)
-                    Text(store.preferences.displayMode == .fixed ? "固定显示" : "轮播中")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-                Spacer()
-                if store.refreshing {
-                    ProgressView().controlSize(.small).accessibilityLabel("正在更新")
-                }
-                Button {
-                    Task { await store.refresh() }
-                } label: {
-                    Image(systemName: "arrow.clockwise").padding(3)
-                }
-                .help("立即刷新")
-                .accessibilityLabel("立即刷新")
-                .disabled(store.refreshing)
-            }
-            .padding(12)
-
-            Divider()
-            if rowUnits <= 4 {
-                rows
+        VStack(alignment: .leading, spacing: 13) {
+            header
+            if let selectedID {
+                QuoteSpotlight(
+                    id: selectedID, store: store,
+                    edit: { openPosition(selectedID) },
+                    trade: { openPosition(selectedID, side: $0) }
+                )
             } else {
-                ScrollView { rows }.frame(height: 360)
+                emptyHoldings
             }
-            Divider()
-
-            HStack {
-                Button {
-                    openSettings(.watchlist)
-                } label: {
-                    Label("添加股票", systemImage: "plus")
+            listHeader
+            if store.allIDs.count > 1 && !visibleIDs.isEmpty {
+                if visibleIDs.count > 4 {
+                    ScrollView { watchlist }.frame(height: 196)
+                } else {
+                    watchlist
                 }
-                Spacer()
-                Button("设置…") { openSettings(.display) }
-                    .keyboardShortcut(",", modifiers: .command)
-                Button("退出") { NSApp.terminate(nil) }
+            }
+        }
+        .padding(15)
+        .frame(width: 410)
+        .onAppear { if selection == nil { selection = store.displayedID } }
+    }
+
+    private var header: some View {
+        HStack(spacing: 8) {
+            MarketGlyph(symbol: "chart.line.uptrend.xyaxis", tint: MarketAppearance.gold)
+            Text("行情栏")
+                .font(.system(size: 16, weight: .semibold))
+                .accessibilityAddTraits(.isHeader)
+            Spacer()
+            if store.refreshing {
+                ProgressView().controlSize(.small).frame(width: 30, height: 30)
+                    .accessibilityLabel("正在更新")
+            } else {
+                MarketIconButton(label: "立即刷新", symbol: "arrow.clockwise") {
+                    Task { await store.refresh() }
+                }
+                .keyboardShortcut("r", modifiers: .command)
+            }
+            MarketIconButton(label: "设置", symbol: "gearshape") {
+                openSettings(.display)
+            }
+            .keyboardShortcut(",", modifiers: .command)
+
+            Menu {
+                if let selectedID {
+                    Button("固定到菜单栏") { store.pin(selectedID) }
+                    Divider()
+                }
+                Button("退出行情栏") { NSApp.terminate(nil) }
                     .keyboardShortcut("q", modifiers: .command)
+            } label: {
+                Image(systemName: "ellipsis")
+                    .font(.system(size: 13, weight: .semibold))
+                    .frame(width: 30, height: 30)
             }
-            .padding(10)
+            .menuStyle(.borderlessButton)
+            .menuIndicator(.hidden)
+            .fixedSize()
+            .accessibilityLabel("更多操作")
+            .help("更多操作")
         }
-        .frame(width: 375)
     }
 
-    private var rowUnits: Int {
-        store.allIDs.count + store.allIDs.filter { store.positions[$0] != nil }.count
-    }
-
-    private var rows: some View {
-        VStack(spacing: 0) {
-            ForEach(store.allIDs, id: \.self) { id in
-                QuoteRow(id: id, store: store) {
-                    store.positionID = id
-                    openSettings(.positions)
+    private var listHeader: some View {
+        HStack {
+            if store.allIDs.count > 1 || filter == .held {
+                HStack(spacing: 2) {
+                    ForEach(Filter.allCases) { item in
+                        Button {
+                            filter = item
+                        } label: {
+                            Text(item.rawValue)
+                                .font(.system(size: 12, weight: filter == item ? .semibold : .regular))
+                                .foregroundStyle(filter == item ? Color.primary : .secondary)
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 5)
+                                .background(.primary.opacity(filter == item ? 0.09 : 0),
+                                            in: RoundedRectangle(cornerRadius: 6))
+                                .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityAddTraits(filter == item ? .isSelected : [])
+                    }
                 }
-                if id != store.allIDs.last { Divider().padding(.horizontal, 12) }
+                .padding(2)
+                .background(.primary.opacity(0.045), in: RoundedRectangle(cornerRadius: 8))
+                .accessibilityElement(children: .contain)
+                .accessibilityLabel("查看范围")
+            } else {
+                Text("自选")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.secondary)
+            }
+            Spacer()
+            Button {
+                openSettings(.watchlist)
+            } label: {
+                Label("添加自选", systemImage: "plus")
+                    .font(.subheadline.weight(.medium))
+                    .foregroundStyle(Color.accentColor)
+                    .padding(.vertical, 5)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(.horizontal, 3)
+    }
+
+    private var watchlist: some View {
+        VStack(spacing: 2) {
+            ForEach(visibleIDs, id: \.self) { id in
+                WatchQuoteRow(id: id, store: store, selected: id == selectedID) {
+                    selection = id
+                }
+                .contextMenu {
+                    Button("编辑持仓") { openPosition(id) }
+                    Button("固定到菜单栏") { store.pin(id) }
+                }
             }
         }
     }
 
-    private func openSettings(_ tab: MarketStore.SettingsTab) {
+    private var emptyHoldings: some View {
+        ContentUnavailableView {
+            Label("暂无持仓", systemImage: "briefcase")
+        } actions: {
+            Button("录入持仓") { openPosition(store.displayedID) }
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 6)
+    }
+
+    private func openPosition(_ id: String, side: PositionTrade.Side? = nil) {
+        store.positionID = id
+        openSettings(.positions, trade: side.map { .init(instrumentID: id, side: $0) })
+    }
+
+    private func openSettings(_ tab: MarketStore.SettingsTab, trade: PositionTradeRequest? = nil) {
         store.settingsTab = tab
+        store.tradeRequest = trade
         openWindow(id: "preferences")
         NSApp.activate(ignoringOtherApps: true)
     }
 }
 
-private struct QuoteRow: View {
+private struct WatchQuoteRow: View {
     let id: String
     let store: MarketStore
-    let editPosition: () -> Void
+    let selected: Bool
+    let action: () -> Void
+    @State private var hovering = false
 
     private var isGold: Bool { id == Instrument.goldID }
 
     var body: some View {
         let quote = store.quotes[id]
-        let error = store.errors[id]
-        VStack(alignment: .leading, spacing: 4) {
-            HStack(alignment: .firstTextBaseline) {
-                Text(store.name(for: id)).fontWeight(.semibold).lineLimit(1)
-                if store.displayedID == id {
-                    Image(systemName: store.preferences.displayMode == .fixed ? "pin.fill" : "play.fill")
+        let code = isGold ? "积存金" : (Instrument(id)?.code ?? id)
+        let quantity = store.positions[id]?.quantityText ?? ""
+        Button(action: action) {
+            HStack(spacing: 9) {
+                MarketGlyph(symbol: isGold ? "circle.hexagongrid.fill" : "chart.line.uptrend.xyaxis",
+                            tint: isGold ? MarketAppearance.gold : .accentColor, size: 27)
+                VStack(alignment: .leading, spacing: 2) {
+                    HStack(spacing: 4) {
+                        Text(store.name(for: id)).font(.system(size: 12, weight: .semibold)).lineLimit(1)
+                        if store.displayedID == id {
+                            Image(systemName: store.preferences.displayMode == .fixed ? "pin.fill" : "play.fill")
+                                .font(.system(size: 8))
+                                .foregroundStyle(.secondary)
+                                .accessibilityLabel("菜单栏当前品种")
+                        }
+                    }
+                    Text(quantity.isEmpty ? code : "\(code) · 持仓 \(quantity) \(isGold ? "克" : "股或份")")
                         .font(.caption2)
                         .foregroundStyle(.secondary)
-                        .accessibilityLabel("正在菜单栏显示")
+                        .lineLimit(1)
                 }
-                Spacer(minLength: 8)
-                Text(quote?.formattedPrice(gold: isGold) ?? "—")
-                    .font(.system(.body, design: .monospaced).weight(.semibold))
-                Button(action: editPosition) {
-                    Image(systemName: "square.and.pencil")
-                }
-                .buttonStyle(.borderless)
-                .help("编辑持仓")
-                .accessibilityLabel("编辑\(store.name(for: id))持仓")
-            }
-
-            HStack(alignment: .firstTextBaseline) {
-                Text(isGold ? "京东金融" : "\(Instrument(id)?.code ?? id) · 腾讯财经")
-                Spacer(minLength: 8)
-                if let quote {
-                    Text("报价 \(quote.quoteTime)")
-                    if let change = quote.formattedChange {
+                Spacer(minLength: 6)
+                VStack(alignment: .trailing, spacing: 2) {
+                    Text(quote?.formattedPrice(gold: isGold) ?? "—")
+                        .font(.system(size: 12, weight: .medium))
+                        .monospacedDigit()
+                    if let change = quote?.formattedChange, let value = quote?.changePercent {
                         Text(change)
+                            .font(.caption2)
                             .monospacedDigit()
-                            .foregroundStyle(changeColor(quote.changePercent ?? 0))
+                            .foregroundStyle(MarketAppearance.movementColor(id: id, sign: value > 0 ? 1 : value < 0 ? -1 : 0))
                     }
-                } else if error == nil {
-                    Text("等待报价")
                 }
+                Image(systemName: store.errors[id] == nil ? "chevron.right" : "exclamationmark.circle")
+                    .font(.caption2)
+                    .foregroundStyle(store.errors[id] == nil ? Color.secondary : Color.orange)
+                    .accessibilityHidden(true)
             }
-            .font(.caption)
-            .foregroundStyle(.secondary)
-
-            if let error {
-                Label(quote == nil ? error : "缓存 · \(error)", systemImage: "exclamationmark.circle")
-                    .font(.caption)
-                    .foregroundStyle(.orange)
-                    .lineLimit(2)
-            }
-
-            if let position = store.positions[id] {
-                Divider().padding(.top, 3)
-                PositionMetrics(position: position, quote: quote, id: id)
+            .padding(.horizontal, 9)
+            .padding(.vertical, 5)
+            .frame(minHeight: 43)
+            .contentShape(Rectangle())
+            .background {
+                RoundedRectangle(cornerRadius: 9)
+                    .fill(selected ? Color.accentColor.opacity(0.13) : Color.primary.opacity(hovering ? 0.06 : 0))
             }
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 9)
-        .contentShape(Rectangle())
-        .help(quote.map { "最近拉取 \(Quote.displayTime($0.fetchedAt))（北京时间）" } ?? "尚未拉取报价")
-        .contextMenu {
-            Button("固定到菜单栏") { store.pin(id) }
-        }
-    }
-
-    private func changeColor(_ value: Double) -> Color {
-        if value == 0 { return .secondary }
-        if Instrument(id)?.market == .us { return value > 0 ? .green : .red }
-        return value > 0 ? .red : .green
+        .buttonStyle(.plain)
+        .onHover { hovering = $0 }
+        .accessibilityAddTraits(selected ? .isSelected : [])
     }
 }

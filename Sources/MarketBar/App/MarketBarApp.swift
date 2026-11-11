@@ -20,6 +20,7 @@ struct MarketBarApp: App {
             PreferencesView(store: delegate.store)
         }
         .windowResizability(.contentSize)
+        .defaultSize(width: 680, height: 510)
         .defaultPosition(.center)
     }
 }
