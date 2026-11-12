@@ -50,8 +50,8 @@ cat > "$CONTENTS/Info.plist" <<PLIST
   <key>CFBundleDisplayName</key><string>行情栏</string>
   <key>CFBundlePackageType</key><string>APPL</string>
   <key>CFBundleIconFile</key><string>AppIcon.icns</string>
-  <key>CFBundleShortVersionString</key><string>1.6.0</string>
-  <key>CFBundleVersion</key><string>8</string>
+  <key>CFBundleShortVersionString</key><string>1.7.0</string>
+  <key>CFBundleVersion</key><string>9</string>
   <key>LSMinimumSystemVersion</key><string>14.0</string>
   <key>LSUIElement</key><true/>
   <key>NSPrincipalClass</key><string>NSApplication</string>

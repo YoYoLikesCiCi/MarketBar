@@ -61,6 +61,9 @@ struct QuoteSpotlight: View {
                 Text(error).font(.caption).foregroundStyle(.secondary).lineLimit(2).help(error)
             }
 
+            QuoteTrendView(id: id, store: store, tint: tint)
+                .id(id)
+
             if let position {
                 Divider()
                 PositionMetrics(position: position, quote: quote, id: id)

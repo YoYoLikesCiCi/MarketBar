@@ -16,7 +16,7 @@ enum QuoteError: LocalizedError {
 }
 
 struct QuoteClient: Sendable {
-    private static let goldSKU = "1961543816"
+    static let goldSKU = "1961543816"
     private let session: URLSession
 
     init() {
@@ -40,7 +40,7 @@ struct QuoteClient: Sendable {
         return try Self.parseStocks(await data(from: url, referer: "https://gu.qq.com/"), instruments: instruments)
     }
 
-    private func data(from url: URL, referer: String) async throws -> Data {
+    func data(from url: URL, referer: String) async throws -> Data {
         var request = URLRequest(url: url)
         request.setValue(referer, forHTTPHeaderField: "Referer")
         request.setValue("no-cache", forHTTPHeaderField: "Cache-Control")

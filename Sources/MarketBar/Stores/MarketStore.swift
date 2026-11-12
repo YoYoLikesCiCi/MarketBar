@@ -18,6 +18,12 @@ final class MarketStore {
     private var refreshTask: Task<Void, Never>?
     private var lastRefreshStarted: Date?
     private var rotationIndex = 0
+    private var trendCache: [String: [QuoteTrendPeriod: TrendCacheEntry]] = [:]
+
+    private struct TrendCacheEntry {
+        let fetchedAt: Date
+        let points: [QuoteTrendPoint]
+    }
 
     private(set) var quotes: [String: Quote] = [:]
     private(set) var errors: [String: String] = [:]
@@ -104,6 +110,21 @@ final class MarketStore {
     func name(for id: String) -> String {
         if id == Instrument.goldID { return "浙商积存金" }
         return quotes[id]?.name ?? Instrument(id)?.code ?? id
+    }
+
+    func trend(for id: String, period: QuoteTrendPeriod) async throws -> [QuoteTrendPoint] {
+        let now = Date.now
+        let calendar = QuoteTrendPoint.calendar(for: id)
+        if let cached = trendCache[id]?[period], now.timeIntervalSince(cached.fetchedAt) < 300,
+           calendar.isDate(now, equalTo: cached.fetchedAt, toGranularity: period.calendarComponent) {
+            return cached.points
+        }
+        let points = try await client.trend(for: id, period: period)
+        try Task.checkCancellation()
+        if allIDs.contains(id) {
+            trendCache[id, default: [:]][period] = TrendCacheEntry(fetchedAt: .now, points: points)
+        }
+        return points
     }
 
     func savePosition(_ position: Position, for id: String) throws {
@@ -216,6 +237,7 @@ final class MarketStore {
         if positionID == id { positionID = Instrument.goldID }
         quotes.removeValue(forKey: id)
         errors.removeValue(forKey: id)
+        trendCache.removeValue(forKey: id)
         saveQuotes()
     }
 
