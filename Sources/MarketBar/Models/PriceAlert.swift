@@ -2,8 +2,14 @@ import Foundation
 
 struct PriceAlertRule: Codable, Identifiable {
     enum Metric: String, Codable, CaseIterable {
-        case percent, amount
-        var label: String { self == .percent ? "涨跌幅" : "价格变动" }
+        case targetPrice, percent, amount
+        var label: String {
+            switch self {
+            case .targetPrice: "目标价格"
+            case .percent: "涨跌幅"
+            case .amount: "价格变动"
+            }
+        }
     }
 
     enum Direction: String, Codable, CaseIterable {
@@ -31,6 +37,10 @@ struct PriceAlertRule: Codable, Identifiable {
         }
 
         var summary: String {
+            if metric == .targetPrice {
+                let comparison = direction == .up ? "≥" : "≤"
+                return "价格 \(comparison) \(PriceAlertRule.numberText(threshold)) \(unit)"
+            }
             let reference = referencePrice.map { "较 \(PriceAlertRule.numberText($0))" } ?? "较昨收"
             return "\(reference) · \(direction.label) · ≥ \(PriceAlertRule.numberText(threshold)) \(unit)"
         }
@@ -50,11 +60,19 @@ struct PriceAlertRule: Codable, Identifiable {
     var lastTriggeredAt: Date?
 
     func reading(for quote: Quote) -> Reading? {
-        guard let reference = criteria.referencePrice ?? quote.previousClose, reference > 0,
-              quote.price.isFinite, quote.price > 0,
+        guard quote.price.isFinite, quote.price > 0,
               let price = Decimal(string: String(quote.price), locale: Locale(identifier: "en_US_POSIX")) else {
             return nil
         }
+        if criteria.metric == .targetPrice {
+            let target = criteria.threshold
+            guard target > 0, criteria.direction != .either else { return nil }
+            let reached = criteria.direction == .up ? price >= target : price <= target
+            return Reading(reference: target, direction: reached ? criteria.direction : nil,
+                           magnitude: abs(price - target))
+        }
+
+        guard let reference = criteria.referencePrice ?? quote.previousClose, reference > 0 else { return nil }
         let delta = price - reference
         let absolute = abs(delta)
         let meetsThreshold = criteria.metric == .percent

@@ -1,5 +1,7 @@
 import Foundation
 import Observation
+import SwiftUI
+import UniformTypeIdentifiers
 import UserNotifications
 
 @MainActor
@@ -97,16 +99,44 @@ final class PriceAlertStore {
 
     private func notify(_ rule: PriceAlertRule, quote: Quote, direction: PriceAlertRule.Direction,
                         magnitude: Decimal) async throws {
-        let gold = rule.criteria.instrumentID == Instrument.goldID
-        let reference = rule.criteria.referencePrice.map { "较参考价 \(PriceAlertRule.numberText($0))" } ?? "较昨收"
-        let change = magnitude.formatted(.number.precision(.fractionLength(0...8)))
+        let criteria = rule.criteria
+        let price = quote.formattedPrice(gold: criteria.instrumentID == Instrument.goldID)
+        let tint = MarketAppearance.movementColor(id: criteria.instrumentID, sign: direction == .up ? 1 : -1)
+        let marker = tint == .red ? "🔴" : "🟢"
+        let condition: String
+        if criteria.metric == .targetPrice {
+            condition = "触发条件 \(criteria.summary)"
+        } else {
+            let reference = criteria.referencePrice.map { "较参考价 \(PriceAlertRule.numberText($0))" } ?? "较昨收"
+            let change = magnitude.formatted(.number.precision(.fractionLength(0...8)))
+            condition = "\(reference)\(direction.label) \(change) \(criteria.unit)"
+        }
+
         let content = UNMutableNotificationContent()
-        content.title = "\(quote.name) · 价格提醒"
-        content.body = "\(reference)\(direction.label) \(change) \(rule.criteria.unit) · 现价 \(quote.formattedPrice(gold: gold))\n报价 \(quote.quoteTime)"
+        content.title = "\(marker) \(price) · \(quote.name)"
+        content.body = "\(condition)\n报价 \(quote.quoteTime)"
         content.sound = .default
-        try await center.add(UNNotificationRequest(
-            identifier: "marketbar.price.\(rule.id.uuidString)", content: content, trigger: nil
-        ))
+
+        let fileManager = FileManager.default
+        let imageURL = fileManager.temporaryDirectory.appendingPathComponent("marketbar-price-\(UUID().uuidString).png")
+        defer { try? fileManager.removeItem(at: imageURL) }
+        if let png = PriceNotificationImage.png(price: price, tint: tint),
+           (try? png.write(to: imageURL, options: .atomic)) != nil,
+           let attachment = try? UNNotificationAttachment(identifier: "price", url: imageURL, options: [
+               UNNotificationAttachmentOptionsTypeHintKey: UTType.png.identifier,
+               UNNotificationAttachmentOptionsThumbnailHiddenKey: true
+           ]) {
+            content.attachments = [attachment]
+        }
+
+        let identifier = "marketbar.price.\(rule.id.uuidString)"
+        do {
+            try await center.add(UNNotificationRequest(identifier: identifier, content: content, trigger: nil))
+        } catch where !content.attachments.isEmpty {
+            // A rejected image must not prevent the alert from being delivered.
+            content.attachments = []
+            try await center.add(UNNotificationRequest(identifier: identifier, content: content, trigger: nil))
+        }
     }
 
     private func persist() {

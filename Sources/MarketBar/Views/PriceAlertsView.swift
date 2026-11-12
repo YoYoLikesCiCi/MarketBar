@@ -34,7 +34,7 @@ struct PriceAlertsView: View {
             }
             if store.priceAlerts.rules.isEmpty {
                 SettingsCard(title: "还没有价格提醒") {
-                    Text("例如：浙商积存金较昨收下跌 10 元/克时提醒。")
+                    Text("例如：浙商积存金涨到 950 元/克时提醒。")
                         .foregroundStyle(.secondary)
                 }
             } else {
@@ -121,7 +121,8 @@ struct PriceAlertsView: View {
 }
 
 private struct PriceAlertEditor: View {
-    private enum Reference: CaseIterable { case previousClose, custom
+    private enum Reference: CaseIterable {
+        case previousClose, custom
         var label: String { self == .previousClose ? "昨收" : "自定价格" }
     }
 
@@ -133,6 +134,7 @@ private struct PriceAlertEditor: View {
     @State private var direction: PriceAlertRule.Direction
     @State private var reference: Reference
     @State private var threshold: String
+    @State private var targetPrice: String
     @State private var referencePrice: String
     @State private var error: String?
 
@@ -140,16 +142,22 @@ private struct PriceAlertEditor: View {
         self.store = store
         ruleID = rule?.id
         _instrumentID = State(initialValue: instrumentID)
-        _metric = State(initialValue: rule?.criteria.metric ?? .percent)
-        _direction = State(initialValue: rule?.criteria.direction ?? .either)
+        let criteria = rule?.criteria
+        let value = criteria.map { PriceAlertRule.numberText($0.threshold) } ?? ""
+        let targetsPrice = criteria?.metric == .targetPrice
+        _metric = State(initialValue: criteria?.metric ?? .targetPrice)
+        _direction = State(initialValue: criteria?.direction ?? .up)
         _reference = State(initialValue: rule?.criteria.referencePrice == nil ? .previousClose : .custom)
-        _threshold = State(initialValue: rule.map { PriceAlertRule.numberText($0.criteria.threshold) } ?? "")
+        _threshold = State(initialValue: targetsPrice ? "" : value)
+        _targetPrice = State(initialValue: targetsPrice ? value : "")
         _referencePrice = State(initialValue: rule?.criteria.referencePrice.map(PriceAlertRule.numberText) ?? "")
     }
 
     private var priceUnit: String {
         instrumentID == Instrument.goldID ? "元/克" : (Instrument(instrumentID)?.currency ?? "CNY") + "/单位"
     }
+
+    private var targetsPrice: Bool { metric == .targetPrice }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 15) {
@@ -164,29 +172,22 @@ private struct PriceAlertEditor: View {
                     SettingsSelect(title: "品种", values: store.allIDs, selection: $instrumentID,
                                    label: store.name(for:))
                 }
-                SettingsOptionRow(title: "参考价格") {
-                    SettingsSegments(title: "参考价格", values: Reference.allCases,
-                                     selection: $reference, label: { $0.label })
-                }
-                if reference == .custom {
-                    SettingsOptionRow(title: "自定参考价") {
-                        SettingsTextField(title: "自定参考价", text: $referencePrice, prompt: "例如 900",
-                                          unit: priceUnit, numeric: true)
-                        .frame(width: 145)
-                    }
-                }
                 SettingsOptionRow(title: "比较方式") {
                     SettingsSegments(title: "比较方式", values: PriceAlertRule.Metric.allCases,
                                      selection: $metric, label: { $0.label })
                 }
-                SettingsOptionRow(title: "变动方向") {
-                    SettingsSegments(title: "变动方向", values: PriceAlertRule.Direction.allCases,
-                                     selection: $direction, label: { $0.label })
-                }
-                SettingsOptionRow(title: "达到或超过") {
-                    SettingsTextField(title: "达到或超过", text: $threshold, prompt: "例如 3",
-                                      unit: metric == .percent ? "%" : priceUnit, numeric: true)
-                    .frame(width: 145)
+                if targetsPrice {
+                    SettingsOptionRow(title: "触发方向") {
+                        SettingsSegments(title: "触发方向", values: [.up, .down], selection: $direction,
+                                         label: { $0 == .up ? "涨到或高于" : "跌到或低于" })
+                    }
+                    SettingsOptionRow(title: "目标价格") {
+                        SettingsTextField(title: "目标价格", text: $targetPrice, prompt: "输入价格",
+                                          unit: priceUnit, numeric: true)
+                        .frame(width: 145)
+                    }
+                } else {
+                    relativeCondition
                 }
             }
 
@@ -204,6 +205,35 @@ private struct PriceAlertEditor: View {
         }
         .padding(20)
         .frame(width: 480)
+        .onChange(of: metric) {
+            error = nil
+            if targetsPrice && direction == .either { direction = .up }
+        }
+    }
+
+    private var relativeCondition: some View {
+        VStack(spacing: 12) {
+            SettingsOptionRow(title: "参考价格") {
+                SettingsSegments(title: "参考价格", values: Reference.allCases,
+                                 selection: $reference, label: { $0.label })
+            }
+            if reference == .custom {
+                SettingsOptionRow(title: "自定参考价") {
+                    SettingsTextField(title: "自定参考价", text: $referencePrice, prompt: "例如 900",
+                                      unit: priceUnit, numeric: true)
+                    .frame(width: 145)
+                }
+            }
+            SettingsOptionRow(title: "变动方向") {
+                SettingsSegments(title: "变动方向", values: PriceAlertRule.Direction.allCases,
+                                 selection: $direction, label: { $0.label })
+            }
+            SettingsOptionRow(title: "达到或超过") {
+                SettingsTextField(title: "达到或超过", text: $threshold, prompt: "例如 3",
+                                  unit: metric == .percent ? "%" : priceUnit, numeric: true)
+                .frame(width: 145)
+            }
+        }
     }
 
     private func save() {
@@ -211,12 +241,14 @@ private struct PriceAlertEditor: View {
             error = "请选择一个自选品种。"
             return
         }
-        guard let value = positive(threshold) else {
-            error = "请输入大于 0 的阈值，最多 8 位小数。"
+        guard let value = positive(targetsPrice ? targetPrice : threshold) else {
+            error = targetsPrice ? "请输入大于 0 的目标价格，最多 8 位小数。"
+                                 : "请输入大于 0 的阈值，最多 8 位小数。"
             return
         }
-        let base = reference == .custom ? positive(referencePrice) : nil
-        guard reference != .custom || base != nil else {
+        let usesCustomReference = !targetsPrice && reference == .custom
+        let base = usesCustomReference ? positive(referencePrice) : nil
+        guard !usesCustomReference || base != nil else {
             error = "请输入大于 0 的参考价格，最多 8 位小数。"
             return
         }
