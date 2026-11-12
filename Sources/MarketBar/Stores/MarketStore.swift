@@ -83,7 +83,7 @@ final class MarketStore {
         preferences.displayMode == .fixed ? preferences.pinnedID : rotationIDs[rotationIndex % rotationIDs.count]
     }
 
-    var menuBarTitle: String {
+    var menuBarQuote: MenuBarQuote {
         let id = displayedID
         let gold = id == Instrument.goldID
         let quote = quotes[id]
@@ -95,8 +95,10 @@ final class MarketStore {
         }
         let price = quote?.formattedPrice(gold: gold) ?? "—"
         let change = preferences.showChange ? quote?.formattedChange : nil
-        return [prefix.isEmpty ? nil : prefix, price, change, errors[id] == nil ? nil : "⚠︎"]
-            .compactMap { $0 }.joined(separator: " ")
+        let suffix = [change, errors[id] == nil ? nil : "⚠︎"]
+            .compactMap { $0 }.map { " " + $0 }.joined()
+        return MenuBarQuote(id: id, prefix: prefix.isEmpty ? "" : prefix + " ", price: price,
+                            suffix: suffix, changePercent: quote?.changePercent)
     }
 
     func name(for id: String) -> String {

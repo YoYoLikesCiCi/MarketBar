@@ -138,7 +138,7 @@ private struct DisplayPreferences: View {
         SettingsCard(title: "菜单栏预览") {
             HStack {
                 Spacer()
-                Text(store.menuBarTitle)
+                MenuBarPriceLabel(quote: store.menuBarQuote, isPreview: true)
                     .font(.system(size: 15, weight: .semibold))
                     .monospacedDigit()
                     .textSelection(.enabled)

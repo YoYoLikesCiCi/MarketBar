@@ -10,9 +10,9 @@ struct MarketBarApp: App {
         MenuBarExtra {
             QuotesPanel(store: delegate.store)
         } label: {
-            Text(delegate.store.menuBarTitle)
-                .monospacedDigit()
-                .accessibilityLabel("行情栏 \(delegate.store.menuBarTitle)")
+            let quote = delegate.store.menuBarQuote
+            MenuBarPriceLabel(quote: quote)
+                .accessibilityLabel("行情栏 \(quote.title)")
         }
         .menuBarExtraStyle(.window)
 
